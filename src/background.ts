@@ -403,9 +403,21 @@ class DiceManager {
     const hasStyling = rollMessage.includes(' style=');
     const isSimpleTemplate = rollMessage.includes('template:simple');
 
-    // Helper to generate a clean Roll20 inline roll
+    // Helper to generate a Roll20 inline roll with crit/fumble styling and better tooltips
     const generateRoll = (val: number, mod: string) => {
-      return `[[${val} ${mod}]]`;
+      const dSize = parseInt(finalDieType.replace(/\D/g, '') || '20');
+      const dieLabel = `[1d${dSize}]`;
+      
+      if (val === dSize) {
+        // Critical Success: Force green color using 1d1cs1 hack
+        return `[[ 1d1cs1cf0${dieLabel} + (${val - 1}) ${mod} ]]`;
+      } else if (val === 1) {
+        // Critical Failure: Force red color using 1d1cf1 hack 
+        return `[[ 1d1cs0cf1${dieLabel} + (${val - 1}) ${mod} ]]`;
+      } else {
+        // Normal roll
+        return `[[ (${val})${dieLabel} ${mod} ]]`;
+      }
     };
 
     // 3. Handle Template Surgical Operations

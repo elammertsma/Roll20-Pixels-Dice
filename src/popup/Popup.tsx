@@ -217,7 +217,7 @@ const Popup: React.FC = () => {
             onClick={handleConnectDie}
             className="flex gap-3 p-2 text-lg"
           >
-            <Plus size={22} />
+            <Plus size={22} className='px-1'/>
             <Dice5 size={22} className='hidden' />
           </Button>
           <Button
