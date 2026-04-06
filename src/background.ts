@@ -1,19 +1,60 @@
-import { Pixel } from "@systemic-games/pixels-web-connect";
+export {};
 
-// Keep track of bridge tab initialization
-let bridgeTabId: number | null = null;
+// Centralized persistence keys
+const STORAGE_KEYS = {
+  HUB_TAB_ID: 'hub_tab_id',
+  REGISTERED_DICE: 'registered_dice_hub_status'
+};
 
-async function ensureBridgeTab(): Promise<number> {
-  const url = chrome.runtime.getURL('bridge.html');
+// Internal cache (to avoid excessive async calls, but backed by storage)
+let cachedHubTabId: number | null = null;
+let diceMapCache: Map<string, DieStatus> = new Map();
+
+// Helper to refresh state from storage
+async function initializeHub(): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get([STORAGE_KEYS.HUB_TAB_ID, STORAGE_KEYS.REGISTERED_DICE]);
+    
+    // Verify stored tab still exists
+    if (result[STORAGE_KEYS.HUB_TAB_ID] !== undefined) {
+      const storedId = result[STORAGE_KEYS.HUB_TAB_ID];
+      try {
+        await chrome.tabs.get(storedId);
+        cachedHubTabId = storedId;
+        console.log('[Pixels Roll20 Hub] Restored and verified hubTabId:', cachedHubTabId);
+      } catch {
+        console.log('[Pixels Roll20 Hub] Stored hubTabId no longer exists, clearing.');
+        await chrome.storage.local.remove(STORAGE_KEYS.HUB_TAB_ID);
+        cachedHubTabId = null;
+      }
+    }
+    
+    // Restore dice map
+    if (result[STORAGE_KEYS.REGISTERED_DICE]) {
+      const savedDice = result[STORAGE_KEYS.REGISTERED_DICE] as DieStatus[];
+      diceMapCache = new Map(savedDice.map(d => [d.dieId, d]));
+      console.log('[Pixels Roll20 Hub] Restored dice cache:', diceMapCache.size);
+    }
+  } catch (error) {
+    console.error('[Pixels Roll20 Hub] Error initializing hub:', error);
+  }
+}
+
+// Immediately initialize
+initializeHub();
+
+async function ensureHubTab(): Promise<number> {
+  const url = chrome.runtime.getURL('hub.html');
   
   // 1. Check if it's already open
-  const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('bridge.html*') });
+  const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('hub.html*') });
   if (tabs.length > 0 && tabs[0].id !== undefined) {
-    bridgeTabId = tabs[0].id;
-    return bridgeTabId;
+    cachedHubTabId = tabs[0].id;
+    await chrome.storage.local.set({ [STORAGE_KEYS.HUB_TAB_ID]: cachedHubTabId });
+    return cachedHubTabId;
   }
 
-  // 2. Find a Roll20 tab to place the bridge next to
+  // 2. Find a Roll20 tab to place the hub next to
   const roll20Tabs = await chrome.tabs.query({ url: '*://app.roll20.net/*' });
   const activeRoll20 = roll20Tabs.find(t => t.active) || roll20Tabs[0];
 
@@ -27,24 +68,30 @@ async function ensureBridgeTab(): Promise<number> {
   });
 
   if (tab.id === undefined) {
-    throw new Error('Failed to create bridge tab');
+    throw new Error('Failed to create hub tab');
   }
 
-  bridgeTabId = tab.id;
-  console.log('[Pixels Roll20] Bridge tab created (unpinned) next to Roll20');
+  cachedHubTabId = tab.id;
+  await chrome.storage.local.set({ [STORAGE_KEYS.HUB_TAB_ID]: cachedHubTabId });
+  console.log('[Pixels Roll20 Hub] Hub tab created (unpinned) next to Roll20');
   
-  // Wait a moment for the bridge to initialize its message listeners
+  // Wait a moment for the hub to initialize its message listeners
   await new Promise(resolve => setTimeout(resolve, 1000));
   
-  return bridgeTabId;
+  return cachedHubTabId!;
 }
 
 interface DieStatus {
-  id: string;
+  dieId: string;
   name: string;
   battery: number;
   dieType: string;
-  isRolling?: boolean;
+  isRolling: boolean;
+  status: string; // 'ready', 'connecting', 'disconnected', etc.
+  isCharging?: boolean;
+  lastResult?: number | null;
+  colorway?: string;
+  rssi?: number;
 }
 
 interface RegisterDieMessage {
@@ -78,55 +125,160 @@ interface DieStatusMessage {
 
 type Message = RegisterDieMessage | DiceRollMessage | DisconnectMessage | GetStatusMessage | DieStatusMessage;
 
-class DiceManager {
-  // Track registered dice (metadata only, actual Pixel objects stay in popup)
-  private registeredDice: Map<string, { name: string; dieType: string; battery: number; isRolling?: boolean }> = new Map();
+interface PendingRoll {
+  dieId: string;
+  face: number;
+  dieType: string;
+  timestamp: number;
+}
 
-  registerDie(dieId: string, dieName: string, dieType: string): void {
-    this.registeredDice.set(dieId, {
+let pendingRoll: PendingRoll | null = null;
+let pendingRollTimeout: any = null;
+
+const STAT_MAP: Record<string, string> = {
+  'str': 'strength',
+  'dex': 'dexterity',
+  'con': 'constitution',
+  'int': 'intelligence',
+  'wis': 'wisdom',
+  'cha': 'charisma'
+};
+
+class DiceManager {
+  registerDie(dieId: string, dieName: string, dieType: string, colorway?: string): void {
+    diceMapCache.set(dieId, {
+      dieId: dieId,
       name: dieName,
-      dieType,
+      dieType: dieType,
       battery: 100,
-      isRolling: false
+      isRolling: false,
+      status: 'ready',
+      colorway
     });
-    console.log(`[Pixels Roll20] Registered die: ${dieName} (${dieId})`);
+    console.log(`[Pixels Roll20 Hub] Registered die: ${dieName} (${dieId})`);
+    this.persistAndNotify();
   }
 
-  updateDieStatus(dieId: string, isRolling: boolean): void {
-    const die = this.registeredDice.get(dieId);
-    if (die) {
-      die.isRolling = isRolling;
-      console.log(`[Pixels Roll20] Die ${dieId} rolling status: ${isRolling}`);
+  private rollWatchdogs: Map<string, any> = new Map();
 
-      // Notify popup of status change by querying for the popup and sending message
-      chrome.runtime.sendMessage({
-        type: 'dieStatusChanged',
-        dieId,
-        isRolling
-      }, () => {
-        // Ignore errors - popup may not be open
-        if (chrome.runtime.lastError) {
-          console.log('[Pixels Roll20] Popup not open, status change not sent');
-        }
+  updateDieStatus(dieId: string, isRolling: boolean, status?: string, rssi?: number): void {
+    const die = diceMapCache.get(dieId);
+    if (die) {
+      if (this.rollWatchdogs.has(dieId)) {
+        clearTimeout(this.rollWatchdogs.get(dieId));
+        this.rollWatchdogs.delete(dieId);
+      }
+
+      die.isRolling = isRolling;
+      if (status) die.status = status;
+      if (rssi !== undefined) die.rssi = rssi;
+
+      if (isRolling) {
+        this.rollWatchdogs.set(dieId, setTimeout(() => {
+          const d = diceMapCache.get(dieId);
+          if (d && d.isRolling) {
+            console.log(`[Pixels Roll20] ⌚ Watchdog: Die ${dieId} rolling for >10s, forcing stop.`);
+            d.isRolling = false;
+            this.persistAndNotify();
+          }
+          this.rollWatchdogs.delete(dieId);
+        }, 10000));
+      }
+
+      this.persistAndNotify();
+    }
+  }
+
+  updateDieBattery(dieId: string, battery: number, isCharging?: boolean): void {
+    const die = diceMapCache.get(dieId);
+    if (die) {
+      die.battery = battery;
+      die.isCharging = isCharging;
+      this.persistAndNotify();
+    }
+  }
+
+  private persistAndNotify(): void {
+    const diceArray = Array.from(diceMapCache.values());
+    chrome.storage.local.set({ [STORAGE_KEYS.REGISTERED_DICE]: diceArray }).then(() => {
+      chrome.runtime.sendMessage({ 
+        type: 'diceStatusUpdate',
+        dice: diceArray
+      }).catch(() => {});
+    });
+  }
+
+  clearAllDice(): void {
+    diceMapCache.clear();
+    chrome.storage.local.remove(STORAGE_KEYS.REGISTERED_DICE).then(() => {
+      chrome.runtime.sendMessage({ type: 'dieStatusChanged' }).catch(() => {});
+    });
+    console.log('[Pixels Roll20 Hub] All dice cleared');
+  }
+
+  getDiceStatus(): DieStatus[] {
+    return Array.from(diceMapCache.values());
+  }
+
+  async disconnectDie(dieId: string): Promise<void> {
+    diceMapCache.delete(dieId);
+    await chrome.storage.local.set({ [STORAGE_KEYS.REGISTERED_DICE]: Array.from(diceMapCache.values()) });
+    this.persistAndNotify();
+
+    console.log(`[Pixels Roll20 Hub] Disconnected die: ${dieId}`);
+
+    // Remove from saved dice so it doesn't auto connect
+    chrome.storage.local.get(['savedDice'], (result) => {
+      const saved = result.savedDice || [];
+      const updated = saved.filter((id: string) => id !== dieId);
+      chrome.storage.local.set({ savedDice: updated });
+    });
+
+    // Tell Hub tab
+    if (cachedHubTabId !== null) {
+      chrome.tabs.sendMessage(cachedHubTabId, {
+        target: 'bridge',
+        type: 'disconnectPixel',
+        systemId: dieId
+      }).catch(() => {
+        console.log('[Pixels Roll20 Hub] Hub tab might already be closed');
       });
     }
   }
 
   async onDieRoll(dieId: string, faceValue: number, dieType: string): Promise<void> {
-    console.log(`[Pixels Roll20] Die rolled: ${dieType} with face ${faceValue}`);
+    const timestamp = Date.now();
+    console.log(`[Pixels Roll20] Die rolled: ${dieType} with face ${faceValue} at ${timestamp}`);
+    
+    // 0. Update local status
+    const die = diceMapCache.get(dieId);
+    if (die) {
+      die.lastResult = faceValue;
+      die.isRolling = false;
+      this.persistAndNotify();
+      
+      setTimeout(() => {
+        if (die.lastResult === faceValue) {
+          die.lastResult = null;
+          this.persistAndNotify();
+        }
+      }, 2000);
+    }
 
-    // 1. Get the current template selection from storage
-    chrome.storage.local.get(['lastSelectedMessageType', 'customRollTemplate', 'customMessageTypes'], async (result) => {
-      let rollFormula = '/roll #face_value'; // Default fallback
+    // 1. Get the current configuration from storage
+    chrome.storage.local.get(['lastSelectedMessageType', 'customRollTemplate', 'customMessageTypes', 'modifierConfig', 'hubSettings'], async (result) => {
+      const config = result.modifierConfig || { advantageMode: 'normal', modifierSource: 'none' };
+      const settings = result.hubSettings || { digitalAdvantage: false };
+      
+      let rollFormula = '/roll #face_value'; 
       const selectedType = result.lastSelectedMessageType;
 
       try {
+        // Resolve roll formula
         if (selectedType && selectedType !== 'custom') {
-          // Check if it's a custom-defined command first
           if (result.customMessageTypes && result.customMessageTypes[selectedType]) {
             rollFormula = result.customMessageTypes[selectedType].formula;
           } else {
-            // It's a built-in template, fetch it directly from the file to be safe
             try {
               const fileUrl = chrome.runtime.getURL(`messageTypes/${selectedType}.json`);
               const response = await fetch(fileUrl);
@@ -136,7 +288,6 @@ class DiceManager {
                 rollFormula = messageData.formula;
               }
             } catch (err) {
-              console.warn(`[Pixels Roll20] Could not fetch built-in template ${selectedType}, using customRollTemplate fallback`);
               rollFormula = result.customRollTemplate || rollFormula;
             }
           }
@@ -144,78 +295,180 @@ class DiceManager {
           rollFormula = result.customRollTemplate;
         }
 
-        // 2. Process the formula
-        const rollMessage = rollFormula.replace(/#face_value/g, faceValue.toString());
-        console.log(`[Pixels Roll20] Sending to Roll20:`, rollMessage.substring(0, 100) + (rollMessage.length > 100 ? '...' : ''));
-
-        // 3. Find and send to the Roll20 tab
-        chrome.tabs.query({ url: '*://app.roll20.net/*' }, async (tabs) => {
-          const roll20Tab = tabs.find(t => t.url?.includes('app.roll20.net'));
-          if (!roll20Tab || !roll20Tab.id) {
-            console.warn('[Pixels Roll20] No Roll20 tab found open');
-            return;
+        // Construct Modifier string
+        let modStr = '';
+        if (config.modifierSource !== 'none' && config.modifierKey) {
+          const key = config.modifierKey;
+          const fullKey = STAT_MAP[key] || key;
+          if (config.modifierSource === 'stat') modStr += ` + @{selected|${fullKey}_mod}`;
+          else if (config.modifierSource === 'save') modStr += ` + @{selected|${fullKey}_save_bonus}`;
+          else if (config.modifierSource === 'skill') modStr += ` + @{selected|${key}_bonus}`;
+        }
+        if (config.manualModifier) {
+          const val = parseInt(config.manualModifier);
+          if (!isNaN(val) && val !== 0) {
+            modStr += ` ${val > 0 ? '+' : ''}${val}`;
           }
+        }
 
-          const tabId = roll20Tab.id;
-          const message = {
-            type: 'diceRoll',
-            face: faceValue,
-            dieType,
-            rollMessage
-          };
+        // --- Handle Advantage / Disadvantage ---
+        const mode = config.advantageMode || 'normal';
+        
+        // 1500ms Simultaneous detection
+        if (mode !== 'normal' && pendingRoll && (timestamp - pendingRoll.timestamp < 1500) && (pendingRoll.dieType === dieType)) {
+          console.log('[Pixels Roll20] Simultaneous roll detected, merging.');
+          if (pendingRollTimeout) clearTimeout(pendingRollTimeout);
+          const r1 = pendingRoll.face;
+          const r2 = faceValue;
+          pendingRoll = null;
+          chrome.runtime.sendMessage({ type: 'waitingForSecondRoll', waiting: false }).catch(() => {});
+          this.sendToRoll20(dieId, dieType, rollFormula, r1, r2, mode, modStr);
+          return;
+        }
 
-          // Try sending the message first
-          chrome.tabs.sendMessage(tabId, message, (response) => {
-            if (chrome.runtime.lastError) {
-              // If message fails, the script might not be injected
-              console.log('[Pixels Roll20] Content script not responding, attempting to inject...');
-              chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                files: ['content.js']
-              }).then(() => {
-                // Try sending again once after injection
-                setTimeout(() => {
-                  chrome.tabs.sendMessage(tabId, message).catch(e => console.error('[Pixels Roll20] Retry failed:', e));
-                }, 100);
-              }).catch(err => console.error('[Pixels Roll20] Injection failed:', err));
+        if (mode === 'normal') {
+          this.sendToRoll20(dieId, dieType, rollFormula, faceValue, null, 'normal', modStr);
+        } else {
+          // Advantage or Disadvantage
+          if (settings.digitalAdvantage) {
+            this.sendToRoll20(dieId, dieType, rollFormula, faceValue, null, mode, modStr, true);
+          } else {
+            // Physical Advantage (Sequential)
+            if (!pendingRoll) {
+              pendingRoll = { dieId, face: faceValue, dieType, timestamp };
+              chrome.runtime.sendMessage({ type: 'waitingForSecondRoll', waiting: true }).catch(() => {});
+              
+              // Notify Roll20 that roll 1 is in
+              const die = diceMapCache.get(dieId);
+              this.sendInterimMessage(die ? die.name : 'Pixel Die', faceValue);
+              
+              // Reset after 30s
+              pendingRollTimeout = setTimeout(() => {
+                if (pendingRoll) {
+                  console.log('[Pixels Roll20] Advantage timeout, sending single roll.');
+                  this.sendToRoll20(pendingRoll.dieId, pendingRoll.dieType, rollFormula, pendingRoll.face, null, 'normal', modStr);
+                  pendingRoll = null;
+                  chrome.runtime.sendMessage({ type: 'waitingForSecondRoll', waiting: false }).catch(() => {});
+                }
+              }, 30000);
+            } else {
+              // Already have one roll pending (but didn't hit simultaneous window)
+              if (pendingRollTimeout) clearTimeout(pendingRollTimeout);
+              const r1 = pendingRoll.face;
+              const r2 = faceValue;
+              pendingRoll = null;
+              chrome.runtime.sendMessage({ type: 'waitingForSecondRoll', waiting: false }).catch(() => {});
+              this.sendToRoll20(dieId, dieType, rollFormula, r1, r2, mode, modStr);
             }
-          });
-        });
+          }
+        }
       } catch (error) {
         console.error('[Pixels Roll20] Error in onDieRoll:', error);
       }
     });
   }
 
-  getDiceStatus(): DieStatus[] {
-    return Array.from(this.registeredDice.entries()).map(([id, data]) => ({
-      id,
-      name: data.name,
-      battery: data.battery,
-      dieType: data.dieType,
-      isRolling: data.isRolling || false
-    }));
+  private sendInterimMessage(dieName: string, faceValue: number): void {
+    chrome.tabs.query({ url: '*://app.roll20.net/*' }, (tabs) => {
+      const roll20Tab = tabs.find(t => t.url?.includes('app.roll20.net'));
+      if (roll20Tab?.id) {
+        chrome.tabs.sendMessage(roll20Tab.id, {
+          type: 'diceRoll',
+          rollMessage: `/me [${dieName}] Roll 1: **${faceValue}**. Waiting for 2nd die...`
+        });
+      }
+    });
   }
 
-  disconnectDie(dieId: string): void {
-    this.registeredDice.delete(dieId);
-    console.log(`[Pixels Roll20] Disconnected die: ${dieId}`);
+  private async sendToRoll20(
+    dieId: string, 
+    dieType: string, 
+    rollFormula: string, 
+    r1Value: number, 
+    r2Value: number | null, 
+    mode: 'normal' | 'advantage' | 'disadvantage', 
+    modStr: string,
+    useDigitalSecondDie: boolean = false
+  ): Promise<void> {
+    let rollMessage = rollFormula;
+    const die = diceMapCache.get(dieId);
+    const dieName = die ? die.name : 'Pixel Die';
+    const finalDieType = die ? die.dieType : dieType;
 
-    // Remove from saved dice so it doesn't auto connect
-    chrome.storage.local.get(['savedDice'], (result) => {
-      const saved = result.savedDice || [];
-      const updated = saved.filter((id: string) => id !== dieId);
-      chrome.storage.local.set({ savedDice: updated });
-    });
+    // 1. Replace #die_name and #die_type basic placeholders
+    rollMessage = rollMessage.replace(/#die_name/g, dieName);
+    rollMessage = rollMessage.replace(/#die_type/g, finalDieType);
 
-    // Tell bridge tab
-    if (bridgeTabId !== null) {
-      chrome.tabs.sendMessage(bridgeTabId, {
-        target: 'bridge',
-        type: 'disconnectPixel',
-        systemId: dieId
-      }).catch(e => console.log('Bridge tab might already be closed', e));
+    // 2. Determine injection style
+    const hasStyling = rollMessage.includes(' style=');
+    const isSimpleTemplate = rollMessage.includes('template:simple');
+
+    // Helper to generate a clean Roll20 inline roll
+    const generateRoll = (val: number, mod: string) => {
+      return `[[${val} ${mod}]]`;
+    };
+
+    // 3. Handle Template Surgical Operations
+    if (isSimpleTemplate) {
+      // Clear all mode flags
+      rollMessage = rollMessage.replace(/{{normal=1}}/g, '').replace(/{{advantage=1}}/g, '').replace(/{{disadvantage=1}}/g, '');
+      rollMessage += (mode === 'advantage' ? ' {{advantage=1}}' : mode === 'disadvantage' ? ' {{disadvantage=1}}' : ' {{normal=1}}');
+
+      // Replace or Add r1
+      const r1Roll = generateRoll(r1Value, modStr);
+      if (rollMessage.includes('#face_value')) {
+        // Find if #face_value is inside an old styled link hack and replace the whole link
+        const linkPattern = /\[#face_value\]\(#"[^)]*\)/;
+        if (linkPattern.test(rollMessage)) {
+           rollMessage = rollMessage.replace(linkPattern, r1Roll);
+        } else {
+           rollMessage = rollMessage.replace(/#face_value/g, r1Roll);
+        }
+      } else if (rollMessage.includes('{{r1=')) {
+        rollMessage = rollMessage.replace(/{{r1=[^}]*}}/, `{{r1=${r1Roll}}}`);
+      }
+
+      // Add/Update r2
+      if (mode !== 'normal') {
+        let r2Content = '';
+        if (useDigitalSecondDie) {
+          const dSize = finalDieType.replace(/\D/g,'') || '20';
+          r2Content = `[[1d${dSize} ${modStr}]]`;
+        } else {
+          r2Content = generateRoll(r2Value || 0, modStr);
+        }
+
+        if (rollMessage.includes('{{r2=')) {
+          rollMessage = rollMessage.replace(/{{r2=[^}]*}}/, `{{r2=${r2Content}}}`);
+        } else {
+          rollMessage += ` {{r2=${r2Content}}}`;
+        }
+      }
+    } else {
+      // Non-simple template (like atk)
+      const r1Roll = generateRoll(r1Value, modStr);
+      rollMessage = rollMessage.replace(/#face_value/g, r1Roll);
     }
+
+    console.log(`[Pixels Roll20] Sending (${mode}):`, rollMessage);
+
+    chrome.tabs.query({ url: '*://app.roll20.net/*' }, (tabs) => {
+      const roll20Tab = tabs.find(t => t.url?.includes('app.roll20.net'));
+      if (roll20Tab?.id) {
+        chrome.tabs.sendMessage(roll20Tab.id, {
+          type: 'diceRoll',
+          face: r1Value,
+          dieType,
+          rollMessage
+        }, (res) => {
+           if (chrome.runtime.lastError) {
+             chrome.scripting.executeScript({ target: { tabId: roll20Tab.id! }, files: ['content.js'] }).then(() => {
+                setTimeout(() => chrome.tabs.sendMessage(roll20Tab.id!, { type: 'diceRoll', rollMessage }), 100);
+             });
+           }
+        });
+      }
+    });
   }
 }
 
@@ -244,12 +497,16 @@ chrome.runtime.onMessage.addListener((
       return false;
 
     case 'dieStatus':
-      diceManager.updateDieStatus(msg.dieId, msg.isRolling);
+      diceManager.updateDieStatus(msg.dieId, msg.isRolling, msg.status);
+      return false;
+
+    case 'updateDieBattery':
+      diceManager.updateDieBattery(msg.dieId, msg.battery, msg.isCharging);
       return false;
 
     case 'connectDie':
       console.log('[Pixels Roll20] Background received connectDie for systemId:', msg.systemId);
-      ensureBridgeTab().then((tabId) => {
+      ensureHubTab().then((tabId) => {
         chrome.tabs.sendMessage(tabId, {
           target: 'bridge',
           type: 'connectToPixel',
@@ -274,15 +531,20 @@ chrome.runtime.onMessage.addListener((
 
 // Auto-open popup when user switches back to Roll20 tabs
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  chrome.tabs.get(activeInfo.tabId, (tab) => {
-    if (tab.url && tab.url.includes('app.roll20.net')) {
-      console.log('[Pixels Roll20] Roll20 tab activated, opening popup');
-      try {
-        chrome.action.openPopup();
-      } catch (error) {
-        console.log('[Pixels Roll20] Could not auto-open popup:', error);
+  chrome.storage.local.get(['hubSettings'], (result) => {
+    const settings = result.hubSettings || { autoOpenPopup: true };
+    if (!settings.autoOpenPopup) return;
+
+    chrome.tabs.get(activeInfo.tabId, (tab) => {
+      if (tab.url && tab.url.includes('app.roll20.net')) {
+        console.log('[Pixels Roll20] Roll20 tab activated, opening popup');
+        try {
+          chrome.action.openPopup();
+        } catch (error) {
+          console.log('[Pixels Roll20] Could not auto-open popup:', error);
+        }
       }
-    }
+    });
   });
 });
 
@@ -294,26 +556,42 @@ function autoConnectDice() {
   chrome.storage.local.get(['savedDice'], (result) => {
     const saved = result.savedDice || [];
     if (saved.length > 0) {
-      console.log('[Pixels Roll20] Auto-opening bridge for saved dice:', saved);
-      ensureBridgeTab();
-      // The bridge handles its own discovery via autoDiscoverDice()
+      console.log('[Pixels Roll20] Auto-opening hub for saved dice:', saved);
+      ensureHubTab();
+      // The hub handles its own discovery via autoDiscoverDice()
     }
   });
 }
 
-// Auto-close bridge tab when all Roll20 tabs are closed
+// Auto-close hub tab when all Roll20 tabs are closed
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+  // If the hub tab itself is closed, clear all dice from the hub
+  if (tabId === cachedHubTabId) {
+    console.log('[Pixels Roll20 Hub] Hub tab closed manually, clearing all dice status');
+    diceManager.clearAllDice();
+    cachedHubTabId = null;
+    await chrome.storage.local.remove(STORAGE_KEYS.HUB_TAB_ID);
+  }
+
   // Check if we still have any Roll20 tabs
   const roll20Tabs = await chrome.tabs.query({ url: '*://app.roll20.net/*' });
   
   if (roll20Tabs.length === 0) {
-    console.log('[Pixels Roll20] No Roll20 tabs left, closing bridge if open');
-    const bridgeTabs = await chrome.tabs.query({ url: chrome.runtime.getURL('bridge.html*') });
-    for (const tab of bridgeTabs) {
-      if (tab.id) {
-        chrome.tabs.remove(tab.id).catch(e => console.log('Failed to close bridge:', e));
+    console.log('[Pixels Roll20 Hub] No Roll20 tabs left, performing delayed hub cleanup');
+    // Add small delay to survive refreshes
+    setTimeout(async () => {
+      const recheck = await chrome.tabs.query({ url: '*://app.roll20.net/*' });
+      if (recheck.length === 0) {
+        const hubTabs = await chrome.tabs.query({ url: chrome.runtime.getURL('hub.html*') });
+        for (const tab of hubTabs) {
+          if (tab.id) {
+            console.log('[Pixels Roll20 Hub] Closing hub tab as no Roll20 tabs remain.');
+            chrome.tabs.remove(tab.id).catch(() => {});
+          }
+        }
+        cachedHubTabId = null;
+        await chrome.storage.local.remove(STORAGE_KEYS.HUB_TAB_ID);
       }
-    }
-    bridgeTabId = null;
+    }, 2000);
   }
 });

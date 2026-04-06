@@ -1,0 +1,8 @@
+{
+  "roll": {
+    "advDisadvantage": false,
+    "formula": "&{template:simple} {{rname=#die_name (#die_type)}} {{r1=[#face_value](#\" style=\"background-color: black; color: white; font-weight: bold; font-size: 20px; text-decoration: none; pointer-events: none; display: inline-block; text-align: center;)}} {{normal=1}}",
+    "name": "Standard roll",
+    "sumRolls": false
+  }
+}

@@ -1,56 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <title>Pixels Bridge</title>
-    <link rel="icon" type="image/png" href="images/logo-64.png">
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <title>Pixels Bridge</title>
+  <link rel="icon" type="image/svg+xml" href="images/pixels_logo.svg">
 </head>
-
 <body>
-    <div class="container">
-        <div class="status-header">
-            <div class="pulse"></div>
-            Pixels Bridge Active
-        </div>
-        <div id="diceList" class="die-list">
-            <!-- Dice will appear here -->
-        </div>
-
-        <button id="pairBtn" style="
-            background: #2196f3;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 1rem;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 1rem;
-            transition: background 0.2s;
-        ">Pair New Die</button>
-
-        <div id="experimentalWarn" class="warn-box">
-            <span class="warn-title">Optional: Automatic Reconnection</span>
-            <p>
-                To enable silent, automatic reconnection, you can enable this Chrome flag:
-            </p>
-            <div class="code-block">
-                <span id="flagUrl">chrome://flags/#enable-web-bluetooth-new-permissions-backend</span>
-                <button id="copyFlagBtn" class="copy-btn" title="Copy URL">
-                    <svg viewBox="0 0 24 24">
-                        <path
-                            d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-                    </svg>
-                </button>
-            </div>
-            <p style="margin-top: 10px; font-size: 0.75rem; opacity: 0.8;">Copy it to your address bar, set to
-                <b>Enabled</b>, and restart Chrome.</p>
-        </div>
-    </div>
-    <script src="bridge.js"></script>
+  <div id="root"></div>
+  <script src="bridge.js"></script>
 </body>
-
 </html>

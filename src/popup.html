@@ -3,60 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pixels Dice Manager</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Pixels Dice for Roll20</title>
 </head>
-<body style="width: 500px; padding: 16px;">
-  <h2>🎲 Pixels Dice Manager</h2>
-  
-  <div class="card">
-    <div class="status-header" style="justify-content: flex-start; margin-bottom: 1rem;">
-      <button id="connectDie" class="btn-primary" style="flex: 1;">Connect New Die</button>
-      <button id="optionsBtn" class="btn-secondary" style="flex: 0 0 auto;">Options</button>
-    </div>
-    <div id="diceList" class="dice-list"></div>
-  </div>
-
-  <div class="card">
-    <label for="messageTypeSelect">Roll Message Type</label>
-    <select id="messageTypeSelect" style="margin-bottom: 12px;">
-      <option value="">-- Select a message type --</option>
-    </select>
-    
-    <label for="messageTemplate">Roll Template</label>
-    <textarea id="messageTemplate" placeholder="Use #face_value to insert the die roll result" style="height: 80px; margin-bottom: 8px;"></textarea>
-    
-    <div class="warn-box" style="display: block; margin-top: 0; margin-bottom: 12px; background: rgba(33, 150, 243, 0.1); border-color: var(--accent);">
-      💡 Use <code>#face_value</code> to insert the roll result.
-    </div>
-    
-    <div style="display: flex; flex-direction: column; gap: 8px;">
-      <button class="btn-primary" id="saveTemplate" style="background: var(--success);">Save Template</button>
-      <div style="display: flex; gap: 8px;">
-        <button id="duplicateTemplateBtn" class="btn-secondary" style="flex: 1;">Duplicate</button>
-        <button id="newCommandBtn" class="btn-secondary" style="flex: 1; border-color: var(--warning); color: var(--warning);">New Command</button>
-      </div>
-    </div>
-
-    <!-- New Command Modal -->
-    <div id="newCommandModal" class="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:1000; align-items:center; justify-content:center;">
-      <div class="modal-content" style="width: 90%; max-width: 400px;">
-        <h3>Create New Command</h3>
-        <label for="newCommandName">Command Name</label>
-        <input id="newCommandName" type="text" style="margin-bottom: 12px;" maxlength="32" />
-        
-        <label for="newCommandTemplate">Template</label>
-        <textarea id="newCommandTemplate" style="height: 80px; margin-bottom: 16px;" placeholder="Example: Rolled a #face_value"></textarea>
-        
-        <div style="display: flex; gap: 12px;">
-          <button id="saveNewCommand" class="btn-primary" style="flex: 1; background: var(--success);">Save</button>
-          <button id="cancelNewCommand" class="btn-secondary" style="flex: 1;">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
+<body>
+  <div id="root"></div>
   <script src="popup.js"></script>
 </body>
 </html>
-

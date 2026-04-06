@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-dark: #121212;
+  --surface: #1e1e1e;
+  --surface-hover: #252525;
+  --card-bg: #2a2a2a;
+  --accent: #2196f3;
+  --accent-hover: #1976d2;
+  --text: #eeeeee;
+  --text-muted: #aaaaaa;
+  --border: #333333;
+  --danger: #ef5350;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --glass: rgba(255, 255, 255, 0.05);
+}
+
+@layer base {
+  body {
+    @apply bg-bg-dark text-text-main font-sans m-0 p-4 leading-relaxed;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply font-semibold px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 inline-flex items-center justify-center gap-2;
+  }
+
+  .btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent text-white hover:bg-accent-hover hover:-translate-y-px;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger text-white hover:bg-red-600;
+  }
+
+  .btn-secondary {
+    @apply btn bg-card-bg text-text-main border border-border-main hover:bg-surface-hover;
+  }
+
+  .card {
+    @apply bg-surface border border-border-main rounded-xl p-4 mb-4 shadow-main;
+  }
+
+  .input-field {
+    @apply w-full bg-card-bg border border-border-main rounded-lg text-text-main px-3 py-2.5 font-sans text-[0.95rem] transition-colors focus:outline-none focus:border-accent;
+  }
+
+  .label-text {
+    @apply block text-[0.85rem] font-semibold text-text-muted mb-1.5 uppercase tracking-wider;
+  }
+
+  @keyframes die-spin {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .die-spinning {
+    animation: die-spin 1.0s linear infinite;
+  }
+
+  .die-settle {
+    transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transform: rotate(0deg);
+  }
+
+  @keyframes result-pop {
+    0% {
+      transform: scale(0) rotate(-45deg);
+      opacity: 0;
+    }
+
+    70% {
+      transform: scale(1.2) rotate(5deg);
+    }
+
+    100% {
+      transform: scale(1) rotate(0deg);
+      opacity: 1;
+    }
+  }
+
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .animate-spin-slow {
+    animation: spin-slow 3s linear infinite;
+  }
+
+  .result-text {
+    animation: result-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+}

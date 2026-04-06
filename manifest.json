@@ -29,7 +29,9 @@
     }
   ],
   "icons": {
-    "64": "images/logo-64.png"
+    "64": "images/pixels_logo_64.png",
+    "128": "images/pixels_logo_128.png",
+    "256": "images/pixels_logo_256.png"
   },
-  "options_page": "options.html"
+  "options_page": "hub.html"
 }
