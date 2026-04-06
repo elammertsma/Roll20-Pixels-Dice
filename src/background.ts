@@ -73,48 +73,78 @@ class DiceManager {
     }
   }
 
-  onDieRoll(dieId: string, faceValue: number, dieType: string): void {
+  async onDieRoll(dieId: string, faceValue: number, dieType: string): Promise<void> {
     console.log(`[Pixels Roll20] Die rolled: ${dieType} with face ${faceValue}`);
     
-    // Get the custom roll template from storage
-    chrome.storage.local.get(['customRollTemplate'], (result) => {
-      let rollMessage = result.customRollTemplate || `/roll ${faceValue}`;
+    // 1. Get the current template selection from storage
+    chrome.storage.local.get(['lastSelectedMessageType', 'customRollTemplate', 'customMessageTypes'], async (result) => {
+      let rollFormula = '/roll #face_value'; // Default fallback
+      const selectedType = result.lastSelectedMessageType;
       
-      // Replace #face_value placeholder with actual roll result
-      rollMessage = rollMessage.replace(/#face_value/g, faceValue.toString());
-      
-      console.log(`[Pixels Roll20] Sending to Roll20:`, rollMessage);
-      
-      // Find and send to the Roll20 tab
-      chrome.tabs.query({ url: '*://app.roll20.net/*' }, (tabs) => {
-        if (tabs.length > 0) {
-          // Send to the first Roll20 tab found
-          const roll20Tab = tabs[0];
-          if (roll20Tab.id) {
-            console.log(`[Pixels Roll20] Sending roll message to Roll20 tab ${roll20Tab.id}`);
-            
-            // First ensure content script is injected
-            chrome.scripting.executeScript({
-              target: { tabId: roll20Tab.id },
-              files: ['content.js']
-            }).then(() => {
-              // Now send the message
-              chrome.tabs.sendMessage(roll20Tab.id!, {
-                type: 'diceRoll',
-                face: faceValue,
-                dieType,
-                rollMessage
-              }).catch(err => {
-                console.error('[Pixels Roll20] Failed to send roll message to tab:', err);
-              });
-            }).catch(err => {
-              console.error('[Pixels Roll20] Failed to inject content script:', err);
-            });
+      try {
+        if (selectedType && selectedType !== 'custom') {
+          // Check if it's a custom-defined command first
+          if (result.customMessageTypes && result.customMessageTypes[selectedType]) {
+            rollFormula = result.customMessageTypes[selectedType].formula;
+          } else {
+            // It's a built-in template, fetch it directly from the file to be safe
+            try {
+              const fileUrl = chrome.runtime.getURL(`messageTypes/${selectedType}.json`);
+              const response = await fetch(fileUrl);
+              const data = await response.json();
+              const messageData = data.message || data.roll;
+              if (messageData && messageData.formula) {
+                rollFormula = messageData.formula;
+              }
+            } catch (err) {
+              console.warn(`[Pixels Roll20] Could not fetch built-in template ${selectedType}, using customRollTemplate fallback`);
+              rollFormula = result.customRollTemplate || rollFormula;
+            }
           }
-        } else {
-          console.warn('[Pixels Roll20] No Roll20 tab found open');
+        } else if (result.customRollTemplate) {
+          rollFormula = result.customRollTemplate;
         }
-      });
+
+        // 2. Process the formula
+        const rollMessage = rollFormula.replace(/#face_value/g, faceValue.toString());
+        console.log(`[Pixels Roll20] Sending to Roll20:`, rollMessage.substring(0, 100) + (rollMessage.length > 100 ? '...' : ''));
+        
+        // 3. Find and send to the Roll20 tab
+        chrome.tabs.query({ url: '*://app.roll20.net/*' }, async (tabs) => {
+          const roll20Tab = tabs.find(t => t.url?.includes('app.roll20.net'));
+          if (!roll20Tab || !roll20Tab.id) {
+            console.warn('[Pixels Roll20] No Roll20 tab found open');
+            return;
+          }
+
+          const tabId = roll20Tab.id;
+          const message = {
+            type: 'diceRoll',
+            face: faceValue,
+            dieType,
+            rollMessage
+          };
+
+          // Try sending the message first
+          chrome.tabs.sendMessage(tabId, message, (response) => {
+            if (chrome.runtime.lastError) {
+              // If message fails, the script might not be injected
+              console.log('[Pixels Roll20] Content script not responding, attempting to inject...');
+              chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ['content.js']
+              }).then(() => {
+                // Try sending again once after injection
+                setTimeout(() => {
+                  chrome.tabs.sendMessage(tabId, message).catch(e => console.error('[Pixels Roll20] Retry failed:', e));
+                }, 100);
+              }).catch(err => console.error('[Pixels Roll20] Injection failed:', err));
+            }
+          });
+        });
+      } catch (error) {
+        console.error('[Pixels Roll20] Error in onDieRoll:', error);
+      }
     });
   }
 

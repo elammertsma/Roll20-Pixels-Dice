@@ -124,14 +124,29 @@ function updateMessageTypeDropdown(): void {
 
   select.addEventListener('change', (e) => {
     const selectedKey = (e.target as HTMLSelectElement).value;
+    const textarea = document.getElementById('messageTemplate') as HTMLTextAreaElement;
+    
     if (selectedKey && rollTemplates.has(selectedKey)) {
       const template = rollTemplates.get(selectedKey)!;
-      const textarea = document.getElementById('messageTemplate') as HTMLTextAreaElement;
       if (textarea) {
         textarea.value = template.formula;
         currentTemplate = selectedKey;
-        // Save the selected message type to storage
-        chrome.storage.local.set({ lastSelectedMessageType: selectedKey });
+        
+        // Save both the selection AND the active formula to storage
+        chrome.storage.local.set({ 
+          lastSelectedMessageType: selectedKey,
+          customRollTemplate: template.formula 
+        });
+      }
+    } else {
+      // Clear selection and template
+      if (textarea) {
+        textarea.value = '';
+        currentTemplate = '';
+        chrome.storage.local.set({ 
+          lastSelectedMessageType: '',
+          customRollTemplate: '' 
+        });
       }
     }
   });
@@ -161,7 +176,12 @@ function saveTemplate(): void {
     if (customTypes[currentTemplate]) {
       // Update custom command in customMessageTypes
       customTypes[currentTemplate].formula = newTemplate;
-      chrome.storage.local.set({ customMessageTypes: customTypes }, () => {
+      
+      // Also update the active override so background uses it immediately
+      chrome.storage.local.set({ 
+        customMessageTypes: customTypes,
+        customRollTemplate: newTemplate 
+      }, () => {
         // Update the in-memory rollTemplates map
         const template = rollTemplates.get(currentTemplate);
         if (template) {
