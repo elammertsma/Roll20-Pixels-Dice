@@ -5,6 +5,7 @@
 
 import { escapeHtml } from './utils';
 
+
 interface DieStatus {
   id: string;
   name: string;
@@ -240,23 +241,32 @@ async function updateDiceList(): Promise<void> {
     }
 
     diceList.innerHTML = diceStatus.map(die => {
-      const statusBadge = die.isRolling ? 'rolling' : 'idle';
-      const statusText = die.isRolling ? 'ROLLING' : 'IDLE';
-      
+      const statusPill = die.isRolling ? '<span class="tag active">Rolling</span>' : '<span class="tag">Idle</span>';
+      const batteryPercent = Math.round(die.battery);
+      let batteryClass = '';
+      if (batteryPercent <= 20) batteryClass = 'battery-critical';
+      else if (batteryPercent <= 50) batteryClass = 'battery-low';
+
       return `
-        <div class="die-card">
-          <h3>
-            <span>${escapeHtml(die.name)}</span>
-            <span class="die-status-badge ${statusBadge}">${statusText}</span>
-          </h3>
-          <p><strong>Type:</strong> ${die.dieType}</p>
-          <p>${getBatteryIcon(die.battery)} Battery: ${die.battery}%</p>
-          <button class="disconnect" data-die-id="${die.id}">Disconnect</button>
+        <div class="die-item">
+          <div class="die-info">
+            <span class="command-name">${escapeHtml(die.name)}</span>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">${die.dieType} • ${statusPill}</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+            <div class="battery-container">
+              <span>${batteryPercent}%</span>
+              <div class="battery-icon">
+                <div class="battery-fill ${batteryClass}" style="width: ${batteryPercent}%"></div>
+              </div>
+            </div>
+            <button class="btn-danger btn-sm" data-die-id="${die.id}" style="padding: 4px 8px; font-size: 0.75rem;">Disconnect</button>
+          </div>
         </div>
       `;
     }).join('');
 
-    document.querySelectorAll<HTMLButtonElement>('button.disconnect').forEach(btn => {
+    document.querySelectorAll<HTMLButtonElement>('.die-item button.btn-danger').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const dieId = (e.target as HTMLButtonElement).dataset.dieId;
         if (dieId) {
@@ -279,18 +289,24 @@ async function updateDiceList(): Promise<void> {
   }
 }
 
-/**
- * Connect a new die - open in a browser tab (only context with Web Bluetooth dialog support)
- */
 async function connectNewDie(): Promise<void> {
   try {
-    const url = chrome.runtime.getURL('connect.html');
-    // Open in a tab - this is the ONLY context where Web Bluetooth dialogs work
-    await chrome.tabs.create({ url });
-    console.log('[Pixels Roll20] Connection tab opened');
-  } catch (error) {
-    console.error('[Pixels Roll20] Error opening connection tab:', error);
-    alert('Failed to open connection tab');
+    const url = chrome.runtime.getURL('bridge.html?action=pair');
+    // Check if bridge tab is already open
+    const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('bridge.html*') });
+    
+    if (tabs.length > 0 && tabs[0].id !== undefined) {
+      // Focus and update existing tab
+      await chrome.tabs.update(tabs[0].id, { url, active: true });
+    } else {
+      // Create and pin new tab
+      await chrome.tabs.create({ url, pinned: true, active: true });
+    }
+    
+    console.log('[Pixels Roll20] Navigated to bridge tab for pairing');
+  } catch (error: any) {
+    console.error('[Pixels Roll20] Error in popup pairing button:', error);
+    alert('Failed to open bridge tab');
   }
 }
 
@@ -302,24 +318,11 @@ function openOptions(): void {
 }
 
 /**
- * Close connection and return to dice list
- */
-function closeConnection(): void {
-  const connectionStatus = document.getElementById('connectionStatus');
-  const diceList = document.getElementById('diceList');
-  
-  if (connectionStatus) connectionStatus.style.display = 'none';
-  if (diceList) diceList.style.display = 'block';
-  
-  updateDiceList();
-}
-
-/**
  * Show the new command modal
  */
 function showNewCommandModal() {
   const modal = document.getElementById('newCommandModal');
-  if (modal) modal.style.display = 'flex';
+  if (modal) modal.classList.add('show');
 }
 
 /**
@@ -327,7 +330,7 @@ function showNewCommandModal() {
  */
 function hideNewCommandModal() {
   const modal = document.getElementById('newCommandModal');
-  if (modal) modal.style.display = 'none';
+  if (modal) modal.classList.remove('show');
   (document.getElementById('newCommandName') as HTMLInputElement).value = '';
   (document.getElementById('newCommandTemplate') as HTMLTextAreaElement).value = '';
 }

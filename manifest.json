@@ -6,9 +6,7 @@
   "permissions": [
     "storage",
     "scripting",
-    "tabs",
-    "bluetooth",
-    "bluetoothPrivate"
+    "tabs"
   ],
   "host_permissions": [
     "https://app.roll20.net/*"

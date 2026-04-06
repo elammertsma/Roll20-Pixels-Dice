@@ -30,12 +30,12 @@ function loadAndDisplayCommands(): void {
       li.innerHTML = `
         <div>
           <div class="command-name">${escapeHtml(command.name || key)}</div>
-          <div style="font-size: 0.9em; color: #666;">${escapeHtml(command.formula).substring(0, 80)}...</div>
+          <div style="font-size: 0.85rem; color: var(--text-muted);">${escapeHtml(command.formula).substring(0, 80)}${command.formula.length > 80 ? '...' : ''}</div>
         </div>
-        <div>
-          <button class="duplicate" data-key="${escapeHtml(key)}">Duplicate</button>
-          <button class="export" data-key="${escapeHtml(key)}">Export</button>
-          <button class="delete" data-key="${escapeHtml(key)}">Delete</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-secondary btn-sm duplicate" data-key="${escapeHtml(key)}" style="padding: 4px 8px; font-size: 0.8rem;">Duplicate</button>
+          <button class="btn-secondary btn-sm export" data-key="${escapeHtml(key)}" style="padding: 4px 8px; font-size: 0.8rem;">Export</button>
+          <button class="btn-danger btn-sm delete" data-key="${escapeHtml(key)}" style="padding: 4px 8px; font-size: 0.8rem;">Delete</button>
         </div>
       `;
       commandList.appendChild(li);
