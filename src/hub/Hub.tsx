@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Logo, Modal, Button } from '../components/UI';
-import { Dice5, ScrollText, Settings as SettingsIcon, LayoutDashboard, ExternalLink, ShieldAlert } from 'lucide-react';
+import { Logo, Modal, Button, SupportButton } from '../components/UI';
+import { Dice5, ScrollText, Settings as SettingsIcon, LayoutDashboard, ExternalLink, ShieldAlert, Zap } from 'lucide-react';
 import DiceTab from './DiceTab';
 import TemplatesTab from './TemplatesTab';
 import SettingsTab from './SettingsTab';
+import ModifiersTab from './ModifiersTab';
 
 const Hub: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dice' | 'templates' | 'settings'>('dice');
+  const [activeTab, setActiveTab] = useState<'dice' | 'templates' | 'settings' | 'modifiers'>('dice');
   const [connectedCount, setConnectedCount] = useState(0);
 
   // Handle URL parameters for tab selection
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
-    if (tab === 'dice' || tab === 'templates' || tab === 'settings') {
+    if (tab === 'dice' || tab === 'templates' || tab === 'settings' || tab === 'modifiers') {
       setActiveTab(tab);
     }
   }, []);
@@ -88,6 +89,7 @@ const Hub: React.FC = () => {
         <nav className="flex flex-col gap-2">
           <TabButton id="dice" icon={<Dice5 size={20} />} label="My Dice" badge={connectedCount} />
           <TabButton id="templates" icon={<ScrollText size={20} />} label="Roll Templates" />
+          <TabButton id="modifiers" icon={<Zap size={20} />} label="Custom Modifiers" />
           <TabButton id="settings" icon={<SettingsIcon size={20} />} label="Settings" />
         </nav>
 
@@ -118,7 +120,9 @@ const Hub: React.FC = () => {
         <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
           {activeTab === 'dice' && <DiceTab />}
           {activeTab === 'templates' && <TemplatesTab />}
+          {activeTab === 'modifiers' && <ModifiersTab />}
           {activeTab === 'settings' && <SettingsTab />}
+          <SupportButton />
         </div>
       </main>
     </div>

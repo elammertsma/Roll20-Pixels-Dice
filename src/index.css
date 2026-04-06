@@ -23,6 +23,16 @@
   body {
     @apply bg-bg-dark text-text-main font-sans m-0 p-4 leading-relaxed;
   }
+
+  select, option {
+    background-color: var(--surface) !important;
+    color: var(--text) !important;
+  }
+
+  select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
 }
 
 @layer components {

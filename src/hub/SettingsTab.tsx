@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Modal, Logo } from '../components/UI';
-import { Settings, ShieldAlert, Monitor, Sparkles, HelpCircle, Bug, ExternalLink } from 'lucide-react';
+import { Monitor, Sparkles, HelpCircle, Bug } from 'lucide-react';
 
 const SettingsTab: React.FC = () => {
   const [settings, setSettings] = useState({
@@ -83,7 +83,7 @@ const SettingsTab: React.FC = () => {
 
           <SettingRow 
             title="Bluetooth Reconnection Flag" 
-            description="Hide or show the experimental Bluetooth permission guidance on the Dice tab." 
+            description="Hide or show the experimental Bluetooth automatic reconnection permission guidance on the Dice tab. (This is always hidden when the Chrome flag is enabled.)" 
             icon={<Sparkles size={20} />}
           >
             <Toggle enabled={settings.showSignalIcons} onChange={(v) => updateSetting('showSignalIcons', v)} />
@@ -99,26 +99,8 @@ const SettingsTab: React.FC = () => {
         </Card>
       </section>
 
-      <section className="space-y-4 pt-4">
-        <h3 className="text-xs font-black uppercase tracking-widest text-text-muted/40 px-2">Advanced Protection</h3>
-        <Card className="bg-danger/5 border-danger/10">
-          <SettingRow 
-            title="Strict Hub Session" 
-            description="Prevents other browser windows from attempting to hijack the active Pixels Hub session." 
-            icon={<ShieldAlert size={20} className="text-danger" />}
-          >
-            <Toggle enabled={true} onChange={() => {
-              setModal({
-                isOpen: true,
-                title: 'Core System Setting',
-                content: 'This setting is currently managed by the background service worker and cannot be disabled to ensure die connectivity stability.'
-              });
-            }} />
-          </SettingRow>
-        </Card>
-      </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-12">
+      {/*<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-12">
         <Card className="p-6 bg-white/2 border-white/5 flex gap-4 items-center group cursor-pointer hover:border-accent/30 transition-all">
           <HelpCircle className="text-accent group-hover:scale-110 transition-transform" size={32} />
           <div>
@@ -134,10 +116,10 @@ const SettingsTab: React.FC = () => {
             <p className="text-[0.7rem] text-text-muted">Report issues or suggest features on GitHub.</p>
           </div>
         </Card>
-      </div>
+      </div>*/}
 
       <div className="text-center pt-12">
-        <p className="text-[0.7rem] text-text-muted opacity-30 font-bold uppercase tracking-widest">Pixels Dice for Roll20 • v2.0.0</p>
+        <p className="text-[0.7rem] text-text-muted opacity-30 font-bold uppercase tracking-widest">Pixels Dice for Roll20 • v2.2.0</p>
       </div>
 
       <Modal

@@ -310,6 +310,12 @@ class DiceManager {
             modStr += ` ${val > 0 ? '+' : ''}${val}`;
           }
         }
+        if (config.customModifierSum) {
+          const val = parseInt(config.customModifierSum);
+          if (!isNaN(val) && val !== 0) {
+            modStr += ` ${val > 0 ? '+' : ''}${val}`;
+          }
+        }
 
         // --- Handle Advantage / Disadvantage ---
         const mode = config.advantageMode || 'normal';

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Card, Input, TextArea, Logo, Select, Modal } from '../components/UI';
+import { Button, Card, Input, TextArea, Logo, Select, Modal, SupportButton } from '../components/UI';
 import { Plus, Edit3, Copy, Download, Trash2, AlertTriangle, FileJson, Lightbulb, X } from 'lucide-react';
 
 interface CustomCommand {
@@ -413,6 +413,7 @@ const Options: React.FC = () => {
       >
         {modal.content}
       </Modal>
+      <SupportButton />
     </div>
   );
 };

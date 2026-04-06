@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Dice1, Plus, Settings, Shield, User, Book, Trash2, XCircle, RefreshCw, Dice5 } from 'lucide-react';
-import { Button, Card, BatteryIcon, Logo, PhysicalDie, DieRow, Select, TextArea, Input } from '../components/UI';
+import { Dice1, Plus, Settings, Shield, User, Book, Trash2, XCircle, RefreshCw, Dice5, ChevronDown, ChevronUp } from 'lucide-react';
+import { Button, Card, BatteryIcon, Logo, PhysicalDie, DieRow, Select, TextArea, Input, SupportButton } from '../components/UI';
 
 interface DieStatus {
   dieId: string;
@@ -20,6 +20,13 @@ interface RollTemplate {
   formula: string;
 }
 
+interface CustomModifier {
+  id: string;
+  name: string;
+  value: number;
+  active: boolean;
+}
+
 const STATS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 const SKILLS = [
   'acrobatics', 'animal_handling', 'arcana', 'athletics', 'deception',
@@ -28,10 +35,47 @@ const SKILLS = [
   'stealth', 'survival'
 ];
 
+const DieLabel: React.FC<{ die: DieStatus }> = ({ die }) => {
+  const typeStr = die.dieType.toLowerCase().replace('pipped', '').replace('d', '');
+  const maxVal = typeStr === '00' ? 90 : (parseInt(typeStr) || 20);
+  const isCrit = !die.isRolling && die.lastResult === maxVal;
+  const isFail = !die.isRolling && die.lastResult === 1;
+  const isLowBattery = die.battery <= 20;
+
+  let colorClass = 'text-text-muted opacity-40';
+  let glowStyle = {};
+
+  if (die.isRolling) {
+    colorClass = 'text-accent animate-pulse';
+    glowStyle = { textShadow: '0 0 8px rgba(59, 130, 246, 0.5)' };
+  } else if (isCrit) {
+    colorClass = 'text-success font-black';
+    glowStyle = { textShadow: '0 0 8px rgba(16, 185, 129, 0.6)' };
+  } else if (isFail) {
+    colorClass = 'text-danger font-black';
+    glowStyle = { textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' };
+  } else if (isLowBattery) {
+    colorClass = 'text-warning animate-pulse';
+    glowStyle = { textShadow: '0 0 8px rgba(245, 158, 11, 0.4)' };
+  }
+
+  return (
+    <span 
+      className={`font-black uppercase tracking-tighter text-sm transition-all duration-300 ${colorClass}`}
+      style={glowStyle}
+      title={isLowBattery ? "Low battery" : `${die.name} (${die.battery}%)`}
+    >
+      {die.dieType.toLowerCase().replace('pipped', '')}
+    </span>
+  );
+};
+
 const Popup: React.FC = () => {
   const [diceList, setDiceList] = useState<DieStatus[]>([]);
   const [rollTemplates, setRollTemplates] = useState<Map<string, RollTemplate>>(new Map());
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>('');
+  const [customModifiers, setCustomModifiers] = useState<CustomModifier[]>([]);
+  const [isCustomModifiersOpen, setIsCustomModifiersOpen] = useState(false);
 
   // Modifiers State
   const [advantageMode, setAdvantageMode] = useState<'normal' | 'advantage' | 'disadvantage'>('normal');
@@ -118,20 +162,40 @@ const Popup: React.FC = () => {
     }
   }, []);
 
+  // Update Custom Modifiers
+  const loadCustomModifiers = useCallback(async () => {
+    const result = await chrome.storage.local.get(['customModifiers']);
+    if (result.customModifiers) {
+      setCustomModifiers(result.customModifiers);
+    }
+  }, []);
+
+  const toggleCustomModifier = async (id: string) => {
+    const updated = customModifiers.map(m => m.id === id ? { ...m, active: !m.active } : m);
+    setCustomModifiers(updated);
+    await chrome.storage.local.set({ customModifiers: updated });
+  };
+
+  const customModifierSum = customModifiers
+    .filter(m => m.active)
+    .reduce((sum, m) => sum + m.value, 0);
+
   useEffect(() => {
     chrome.storage.local.set({
       modifierConfig: {
         advantageMode,
         modifierSource,
         modifierKey,
-        manualModifier
+        manualModifier,
+        customModifierSum
       }
     });
-  }, [advantageMode, modifierSource, modifierKey, manualModifier]);
+  }, [advantageMode, modifierSource, modifierKey, manualModifier, customModifierSum]);
 
   useEffect(() => {
     loadMessageTypes();
     updateDiceList();
+    loadCustomModifiers();
     const interval = setInterval(updateDiceList, 1000);
 
     const messageListener = (message: any) => {
@@ -167,13 +231,12 @@ const Popup: React.FC = () => {
     }
   };
 
-  const handleConnectDie = async () => {
+  const handleOpenHub = async (tab: string = 'dice', params: string = '') => {
     try {
-      const url = chrome.runtime.getURL('hub.html?tab=dice&action=pair');
+      const url = chrome.runtime.getURL(`hub.html?tab=${tab}${params ? '&' + params : ''}`);
       const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('hub.html*') });
 
       if (tabs.length > 0 && tabs[0].id !== undefined) {
-        // If hub exists, just update it and switch to it
         await chrome.tabs.update(tabs[0].id, { url, active: true });
       } else {
         const roll20Tabs = await chrome.tabs.query({ url: '*://app.roll20.net/*' });
@@ -188,9 +251,11 @@ const Popup: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('[Pixels Roll20] Error connecting die:', error);
+      console.error('[Pixels Roll20] Error opening hub:', error);
     }
   };
+
+  const handleConnectDie = () => handleOpenHub('dice', 'action=pair');
 
   const handleDisconnect = async (dieId: string) => {
     try {
@@ -210,48 +275,37 @@ const Popup: React.FC = () => {
     <div className="w-[500px] p-4 text-text-main pb-6">
       <div className="flex items-center gap-3 mb-6">
         <Logo size={48} />
-        <h2 className="text-2xl font-black tracking-tight text-accent italic">Pixels Dice for Roll20</h2>
+        <h2 className="text-2xl font-black tracking-tight text-accent italic flex-1">Pixels Dice for Roll20</h2>
 
-        <div className="flex-1 gap-3 mb-6 text-right items-right justify-end">
-          <Button
-            onClick={handleConnectDie}
-            className="flex gap-3 p-2 text-lg"
-          >
-            <Plus size={22} className='px-1'/>
-            <Dice5 size={22} className='hidden' />
-          </Button>
-          <Button
-            onClick={async () => {
-              const url = chrome.runtime.getURL('hub.html?tab=templates');
-              const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('hub.html*') });
-              if (tabs.length > 0 && tabs[0].id !== undefined) {
-                await chrome.tabs.update(tabs[0].id, { url, active: true });
-              } else {
-                await chrome.tabs.create({ url });
-              }
-            }}
-            variant="secondary"
-            className="p-2"
-            title="Open Roll Templates"
-          >
-            <Settings size={22} />
-          </Button>
-        </div>
+        <Button
+          onClick={() => handleOpenHub('templates')}
+          variant="secondary"
+          className="!p-0 w-10 h-10 rounded-xl"
+          title="Open Pixels Hub"
+        >
+          <Settings size={22} />
+        </Button>
       </div>
 
-      <Card>
-        <div className="space-y-4">
-          {diceList.length === 0 ? (
-            <p className="text-text-muted text-center py-8 bg-card-bg rounded-xl border border-dashed border-border-main">
-              No dice connected. Click "Connect New Die" to get started.
-            </p>
-          ) : (
-            diceList.map(die => (
-              <DieRow key={die.dieId} die={die} onDisconnect={handleDisconnect} />
-            ))
-          )}
+      <div className="bg-white/2 border border-white/5 rounded-2xl p-3 flex items-center justify-between shadow-none mb-6">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <span className="text-[0.8rem] font-black uppercase tracking-[0.2em] text-text-muted opacity-80 whitespace-nowrap">Connected:</span>
+          <div className="flex gap-4 overflow-x-auto no-scrollbar py-1">
+            {diceList.length === 0 ? (
+              <span className="text-[0.8rem] font-black uppercase tracking-widest text-text-muted opacity-40">No dice connected.</span>
+            ) : (
+              diceList.map(die => <DieLabel key={die.dieId} die={die} />)
+            )}
+          </div>
         </div>
-      </Card>
+        <Button
+          onClick={handleConnectDie}
+          className="w-8 h-8 !p-0 rounded-full flex-shrink-0 shadow-lg shadow-accent/20"
+          title="Add Dice"
+        >
+          <Plus size={18} />
+        </Button>
+      </div>
 
       {/* Modifiers Section */}
       <Card className="p-4">
@@ -369,6 +423,58 @@ const Popup: React.FC = () => {
           </div>
         )}
 
+        {/* Custom Modifiers Collapsible */}
+        <div className="mt-4 border-t border-white/5 pt-4">
+          <button
+            onClick={() => setIsCustomModifiersOpen(!isCustomModifiersOpen)}
+            className="w-full flex justify-between items-center group cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <span className={`transition-transform duration-200 ${isCustomModifiersOpen ? 'rotate-180' : ''}`}>
+                <ChevronDown size={14} className="text-text-muted group-hover:text-accent" />
+              </span>
+              <span className="text-[0.65rem] font-black uppercase tracking-widest text-text-muted group-hover:text-text-main">Custom Modifiers</span>
+            </div>
+            {customModifierSum !== 0 && (
+              <span className="text-[0.7rem] font-black text-accent bg-accent/10 px-2 py-0.5 rounded-full border border-accent/10">
+                {customModifierSum > 0 ? `+${customModifierSum}` : customModifierSum}
+              </span>
+            )}
+          </button>
+
+          {isCustomModifiersOpen && (
+            <div className="mt-4 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+              {customModifiers.length === 0 ? (
+                <p className="text-[0.6rem] text-text-muted italic text-center py-2">
+                  Add custom modifiers in the <button onClick={() => handleOpenHub('modifiers')} className="text-accent underline cursor-pointer hover:text-accent-hover transition-colors inline-bg-transparent border-0 p-0 font-italic">Hub settings</button>.
+                </p>
+              ) : (
+                customModifiers.map(mod => (
+                  <button
+                    key={mod.id}
+                    onClick={() => toggleCustomModifier(mod.id)}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer ${
+                      mod.active 
+                        ? 'bg-accent/10 border-accent/20 text-text-main' 
+                        : 'bg-white/2 border-transparent text-text-muted hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full border-2 transition-all ${
+                        mod.active ? 'bg-accent border-accent scale-110' : 'border-white/10'
+                      }`} />
+                      <span className="text-[0.7rem] font-bold uppercase tracking-tight">{mod.name}</span>
+                    </div>
+                    <span className={`text-[0.75rem] font-black ${mod.active ? 'text-accent' : 'opacity-40'}`}>
+                      {mod.value >= 0 ? `+${mod.value}` : mod.value}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         {isWaitingForSecondRoll && (
           <div className="mt-4 p-3 bg-accent/10 border border-accent/20 rounded-xl flex items-center gap-3 animate-pulse">
             <RefreshCw size={16} className="text-accent animate-spin-slow" />
@@ -390,6 +496,7 @@ const Popup: React.FC = () => {
           />
         </div>
       </Card>
+      <SupportButton />
     </div>
   );
 };

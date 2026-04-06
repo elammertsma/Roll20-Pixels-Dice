@@ -70,10 +70,12 @@ export const Select: React.FC<{
     id={id}
     value={value}
     onChange={onChange}
-    className={`w-full bg-card-bg border border-border-main rounded-lg text-text-main px-3 py-2.5 font-sans text-[0.95rem] transition-colors focus:outline-none focus:border-accent ${className}`}
+    className={`w-full bg-card-bg border border-border-main rounded-lg text-text-main px-3 py-2.5 font-sans text-[0.95rem] transition-colors focus:outline-none focus:border-accent appearance-none ${className}`}
   >
     {options.map(opt => (
-      <option key={opt.value} value={opt.value}>{opt.label}</option>
+      <option key={opt.value} value={opt.value} className="bg-surface text-text-main">
+        {opt.label}
+      </option>
     ))}
   </select>
 );
@@ -374,4 +376,17 @@ export const Modal: React.FC<ModalProps> = ({
     </div>
   );
 };
+
+export const SupportButton: React.FC = () => (
+  <div className="flex flex-col items-center gap-3 py-6 border-t border-white/5 mt-12 w-full text-center opacity-60 hover:opacity-100 transition-opacity">
+    <p className="text-[0.6rem] uppercase tracking-[0.2em] font-black text-text-muted">Support the developer</p>
+    <form action="https://www.paypal.com/donate" method="post" target="_blank">
+      <input type="hidden" name="business" value="VSZVE7SKUWFUU" />
+      <input type="hidden" name="no_recurring" value="0" />
+      <input type="hidden" name="item_name" value="As an unemployed product manager that loves tinkering on and contributing to projects, I very much appreciate your support!" />
+      <input type="hidden" name="currency_code" value="USD" />
+      <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button" className="hover:scale-105 transition-transform" />
+    </form>
+  </div>
+);
 
