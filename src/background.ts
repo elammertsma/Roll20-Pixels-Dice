@@ -483,6 +483,12 @@ class DiceManager {
              chrome.scripting.executeScript({ target: { tabId: roll20Tab.id! }, files: ['content.js'] }).then(() => {
                 setTimeout(() => chrome.tabs.sendMessage(roll20Tab.id!, { type: 'diceRoll', rollMessage }), 100);
              });
+           } else if (res && res.success === false) {
+             console.warn('[Pixels Roll20] Content script failed to inject roll.');
+             chrome.runtime.sendMessage({ 
+               type: 'rollError', 
+               error: 'Roll20 chat not found. Ignoring roll.' 
+             }).catch(() => {});
            }
         });
       }
@@ -549,20 +555,9 @@ chrome.runtime.onMessage.addListener((
 
 // Auto-open popup when user switches back to Roll20 tabs
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  chrome.storage.local.get(['hubSettings'], (result) => {
-    const settings = result.hubSettings || { autoOpenPopup: true };
-    if (!settings.autoOpenPopup) return;
-
-    chrome.tabs.get(activeInfo.tabId, (tab) => {
-      if (tab.url && tab.url.includes('app.roll20.net')) {
-        console.log('[Pixels Roll20] Roll20 tab activated, opening popup');
-        try {
-          chrome.action.openPopup();
-        } catch (error) {
-          console.log('[Pixels Roll20] Could not auto-open popup:', error);
-        }
-      }
-    });
+  chrome.tabs.get(activeInfo.tabId, (tab) => {
+    if (chrome.runtime.lastError || !tab) return;
+    tryOpenPopup(tab);
   });
 });
 
@@ -580,6 +575,31 @@ function autoConnectDice() {
     }
   });
 }
+
+// Helper to attempt opening the popup action
+function tryOpenPopup(tab: chrome.tabs.Tab) {
+  if (tab.url && tab.url.includes('app.roll20.net')) {
+    chrome.storage.local.get(['hubSettings'], (result) => {
+      const settings = result.hubSettings || { autoOpenPopup: true };
+      if (!settings.autoOpenPopup) return;
+
+      console.log('[Pixels Roll20] Attempting to auto-open popup for Roll20');
+      try {
+        chrome.action.openPopup();
+      } catch (error) {
+        // This often fails in MV3 without user gesture, but we try anyway
+        console.log('[Pixels Roll20] Could not auto-open popup:', error);
+      }
+    });
+  }
+}
+
+// Auto-open when tab is updated (refreshed or loaded)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url?.includes('app.roll20.net')) {
+    tryOpenPopup(tab);
+  }
+});
 
 // Auto-close hub tab when all Roll20 tabs are closed
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {

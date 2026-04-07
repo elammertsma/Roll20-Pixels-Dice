@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Pixel } from "@systemic-games/pixels-core-connect";
 import { repeatConnect, getPixel, requestPixel } from "@systemic-games/pixels-web-connect";
-import { Button, Card, PhysicalDie, DieRow, SignalIcon, Logo } from '../components/UI';
+import { Button, Card, PhysicalDie, DieRow, SignalIcon, Logo, Modal } from '../components/UI';
 import { Plus, Bluetooth, Info, ShieldAlert, CheckCircle2, RefreshCw } from 'lucide-react';
 
 const DiceTab: React.FC = () => {
@@ -10,6 +10,7 @@ const DiceTab: React.FC = () => {
   const [showBluetoothFlag, setShowBluetoothFlag] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [hubDice, setHubDice] = useState<any[]>([]);
+  const [connectError, setConnectError] = useState<string | null>(null);
   
   const activeDiceRef = useRef(activeDice);
   useEffect(() => {
@@ -124,8 +125,13 @@ const DiceTab: React.FC = () => {
       }).catch(() => { });
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Pixels Roll20] Connection error:', error);
+      let errorMsg = error.message || String(error);
+      if (errorMsg.includes('out of range') || errorMsg.includes('code 19')) {
+        errorMsg = "Your Pixel is out of range or turned off. Please bring it closer and try again.";
+      }
+      setConnectError(errorMsg);
       return false;
     }
   }, [setupPixelListeners]);
@@ -281,6 +287,16 @@ const DiceTab: React.FC = () => {
           </div>
         </Card>
       )}
+
+      <Modal
+        isOpen={!!connectError}
+        onClose={() => setConnectError(null)}
+        title="Connection Error"
+        variant="warning"
+        actions={<Button onClick={() => setConnectError(null)}>Retry</Button>}
+      >
+        <p>{connectError}</p>
+      </Modal>
     </div>
   );
 };

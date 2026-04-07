@@ -32,8 +32,10 @@ const Hub: React.FC = () => {
 
     updateCount();
     const interval = setInterval(updateCount, 2000);
+
     return () => clearInterval(interval);
   }, []);
+
 
   // Warning before closing the tab
   useEffect(() => {

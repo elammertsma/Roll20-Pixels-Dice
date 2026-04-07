@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Dice1, Plus, Settings, Shield, User, Book, Trash2, XCircle, RefreshCw, Dice5, ChevronDown, ChevronUp } from 'lucide-react';
-import { Button, Card, BatteryIcon, Logo, PhysicalDie, DieRow, Select, TextArea, Input, SupportButton } from '../components/UI';
+import { Button, Card, BatteryIcon, Logo, PhysicalDie, DieRow, Select, TextArea, Input, SupportButton, Modal } from '../components/UI';
 
 interface DieStatus {
   dieId: string;
@@ -83,6 +83,7 @@ const Popup: React.FC = () => {
   const [modifierKey, setModifierKey] = useState<string>('');
   const [manualModifier, setManualModifier] = useState<number>(0);
   const [isWaitingForSecondRoll, setIsWaitingForSecondRoll] = useState<boolean>(false);
+  const [rollError, setRollError] = useState<string | null>(null);
 
   // Update Dice List
   const updateDiceList = useCallback(async () => {
@@ -205,6 +206,9 @@ const Popup: React.FC = () => {
       if (message.type === 'waitingForSecondRoll') {
         setIsWaitingForSecondRoll(message.waiting);
       }
+      if (message.type === 'rollError') {
+        setRollError(message.error);
+      }
     };
     chrome.runtime.onMessage.addListener(messageListener);
 
@@ -213,6 +217,14 @@ const Popup: React.FC = () => {
       chrome.runtime.onMessage.removeListener(messageListener);
     };
   }, [loadMessageTypes, updateDiceList]);
+
+  // Handle error dismissal
+  useEffect(() => {
+    if (rollError) {
+      const timer = setTimeout(() => setRollError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [rollError]);
 
   const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const key = e.target.value;
@@ -291,10 +303,10 @@ const Popup: React.FC = () => {
         <div className="flex items-center gap-3 overflow-hidden">
           <span className="text-[0.8rem] font-black uppercase tracking-[0.2em] text-text-muted opacity-80 whitespace-nowrap">Connected:</span>
           <div className="flex gap-4 overflow-x-auto no-scrollbar py-1">
-            {diceList.length === 0 ? (
+            {diceList.filter(d => d.status !== 'disconnected').length === 0 ? (
               <span className="text-[0.8rem] font-black uppercase tracking-widest text-text-muted opacity-40">No dice connected.</span>
             ) : (
-              diceList.map(die => <DieLabel key={die.dieId} die={die} />)
+              diceList.filter(d => d.status !== 'disconnected').map(die => <DieLabel key={die.dieId} die={die} />)
             )}
           </div>
         </div>
@@ -377,7 +389,7 @@ const Popup: React.FC = () => {
             {STATS.map(s => (
               <button
                 key={s}
-                onClick={() => setModifierKey(s)}
+                onClick={() => setModifierKey(modifierKey === s ? '' : s)}
                 className={`py-2 rounded-lg font-black uppercase text-[0.6rem] transition-all ${modifierKey === s && modifierSource === 'stat'
                   ? 'bg-accent text-white'
                   : 'bg-white/5 text-text-muted hover:bg-white/10'
@@ -394,7 +406,7 @@ const Popup: React.FC = () => {
             {STATS.map(s => (
               <button
                 key={s}
-                onClick={() => setModifierKey(s)}
+                onClick={() => setModifierKey(modifierKey === s ? '' : s)}
                 className={`py-2 rounded-lg font-black uppercase text-[0.6rem] transition-all ${modifierKey === s && modifierSource === 'save'
                   ? 'bg-accent text-white'
                   : 'bg-white/5 text-text-muted hover:bg-white/10'
@@ -411,7 +423,7 @@ const Popup: React.FC = () => {
             {SKILLS.map(s => (
               <button
                 key={s}
-                onClick={() => setModifierKey(s)}
+                onClick={() => setModifierKey(modifierKey === s ? '' : s)}
                 className={`py-1.5 px-1 rounded-lg font-bold uppercase text-[0.55rem] tracking-tighter truncate transition-all ${modifierKey === s && modifierSource === 'skill'
                   ? 'bg-accent text-white'
                   : 'bg-white/5 text-text-muted hover:bg-white/10 text-left pl-2'
@@ -497,6 +509,18 @@ const Popup: React.FC = () => {
         </div>
       </Card>
       <SupportButton />
+
+      <Modal
+        isOpen={!!rollError}
+        onClose={() => setRollError(null)}
+        title="Roll Failed"
+        variant="warning"
+        actions={
+          <Button onClick={() => setRollError(null)}>Got it</Button>
+        }
+      >
+        <p>{rollError}</p>
+      </Modal>
     </div>
   );
 };
