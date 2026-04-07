@@ -5,6 +5,7 @@ import { Monitor, Sparkles, HelpCircle, Bug } from 'lucide-react';
 const SettingsTab: React.FC = () => {
   const [settings, setSettings] = useState({
     autoOpenPopup: true,
+    autoOpenHub: true,
     showSignalIcons: true,
     hapticFeedback: false,
     digitalAdvantage: false
@@ -95,6 +96,14 @@ const SettingsTab: React.FC = () => {
             icon={<Logo size={20} />}
           >
             <Toggle enabled={settings.digitalAdvantage} onChange={(v) => updateSetting('digitalAdvantage', v)} />
+          </SettingRow>
+
+          <SettingRow 
+            title="Auto-open Hub with Popup" 
+            description="Automatically open the Pixels Hub in a background tab when the Roll20 popup appears. This ensures your dice can reconnect silently as soon as you enter a game." 
+            icon={<Sparkles size={20} />}
+          >
+            <Toggle enabled={settings.autoOpenHub} onChange={(v) => updateSetting('autoOpenHub', v)} />
           </SettingRow>
         </Card>
       </section>

@@ -9,15 +9,44 @@ import ModifiersTab from './ModifiersTab';
 const Hub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dice' | 'templates' | 'settings' | 'modifiers'>('dice');
   const [connectedCount, setConnectedCount] = useState(0);
+  const [hasInteracted, setHasInteracted] = useState(false);
 
-  // Handle URL parameters for tab selection
+  // Handle URL parameters for tab selection and listen for internal switches
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab');
-    if (tab === 'dice' || tab === 'templates' || tab === 'settings' || tab === 'modifiers') {
-      setActiveTab(tab);
-    }
+    const tabFromUrl = params.get('tab');
+    
+    const setInternalTab = (tab: any) => {
+      if (tab === 'dice' || tab === 'templates' || tab === 'settings' || tab === 'modifiers') {
+        setActiveTab(tab);
+      }
+    };
+
+    if (tabFromUrl) setInternalTab(tabFromUrl);
+
+    // Message listener for tab switches from other parts of the extension
+    const messageListener = (message: any) => {
+      if (message.type === 'switchTab') {
+        setInternalTab(message.tab);
+        // Optionally handle specific actions (like pairing)
+        if (message.action === 'pair') {
+          // This logic could be added if needed, but let's stick to tab switching first
+        }
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(messageListener);
+    return () => chrome.runtime.onMessage.removeListener(messageListener);
   }, []);
+
+  // Sync state back to URL without reloading
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('tab') !== activeTab) {
+      url.searchParams.set('tab', activeTab);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [activeTab]);
 
   // Update connected count
   useEffect(() => {
@@ -37,11 +66,22 @@ const Hub: React.FC = () => {
   }, []);
 
 
+  // Interactivity tracking to silence console warnings about blocked beforeunload dialogs
+  useEffect(() => {
+    const interactionHandler = () => setHasInteracted(true);
+    window.addEventListener('mousedown', interactionHandler, { once: true });
+    window.addEventListener('keydown', interactionHandler, { once: true });
+    return () => {
+      window.removeEventListener('mousedown', interactionHandler);
+      window.removeEventListener('keydown', interactionHandler);
+    };
+  }, []);
+
   // Warning before closing the tab
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Only warn if dice are actually connected!
-      if (connectedCount > 0) {
+      // Only warn if dice are actually connected AND user has interacted (required by browser)
+      if (connectedCount > 0 && hasInteracted) {
         e.preventDefault();
         e.returnValue = ''; // Browsers show a generic message anyway
         return e.returnValue;
@@ -49,7 +89,7 @@ const Hub: React.FC = () => {
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [connectedCount]);
+  }, [connectedCount, hasInteracted]);
 
   const TabButton: React.FC<{ 
     id: typeof activeTab, 
@@ -108,12 +148,12 @@ const Hub: React.FC = () => {
             Back to Roll20
           </a>
           
-          <div className="mt-4 p-4 rounded-2xl bg-warning/5 border border-warning/10">
+          <div className="my-4 p-4 rounded-2xl bg-warning/5 border border-warning/10 animate-pulse-gentle">
             <div className="flex items-center gap-2 text-warning mb-1">
               <ShieldAlert size={14} />
-              <span className="text-[0.7rem] font-black uppercase tracking-wider">Keep this tab open</span>
+              <span className="text-[1.0rem] font-black uppercase tracking-wider">Keep this tab open</span>
             </div>
-            <p className="text-[0.65rem] text-text-muted leading-relaxed">
+            <p className="text-[0.8rem] text-text-muted leading-relaxed">
               Dice connectivity requires this tab to remain active in your browser.
             </p>
           </div>

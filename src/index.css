@@ -17,6 +17,13 @@
   --warning: #ff9800;
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   --glass: rgba(255, 255, 255, 0.05);
+
+  /* Pixels Brand Colors */
+  --pixels-blue: #1a89ca;
+  --pixels-magenta: #bc1b84;
+  --pixels-red: #ec1b37;
+  --pixels-yellow: #fdbe0f;
+  --pixels-lime: #a0cd3a;
 }
 
 @layer base {
@@ -112,6 +119,65 @@
   }
 
   .result-text {
-    animation: result-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    /* Base styles only */
+  }
+
+  @keyframes result-combined {
+    0% {
+      transform: scale(0) rotate(-45deg);
+      opacity: 0;
+    }
+    10% { /* ~0.6s - end of pop */
+      transform: scale(1.2) rotate(5deg);
+      opacity: 1;
+    }
+    15% { /* ~0.9s - settled */
+      transform: scale(1) rotate(0deg);
+      opacity: 1;
+    }
+    50% { /* 3s - end of hold */
+      opacity: 1;
+    }
+    100% { /* 6s - end of fade */
+      opacity: 0;
+    }
+  }
+
+  .animate-result-fade {
+    animation: result-combined 6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+
+  @keyframes rolling-rainbow {
+    0% { color: var(--pixels-blue); stroke: var(--pixels-blue); }
+    20% { color: var(--pixels-magenta); stroke: var(--pixels-magenta); }
+    40% { color: var(--pixels-red); stroke: var(--pixels-red); }
+    60% { color: var(--pixels-yellow); stroke: var(--pixels-yellow); }
+    80% { color: var(--pixels-lime); stroke: var(--pixels-lime); }
+    100% { color: var(--pixels-blue); stroke: var(--pixels-blue); }
+  }
+
+  .animate-rainbow {
+    animation: rolling-rainbow 3s linear infinite;
+  }
+
+  /* Combined Animations to prevent property overwriting */
+  .animate-rolling-all {
+    animation: 
+      die-spin 1s linear infinite, 
+      rolling-rainbow 3s linear infinite;
+  }
+
+  .animate-crit-all {
+    animation: 
+      result-combined 6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards,
+      rolling-rainbow 3s linear infinite;
+  }
+
+  @keyframes gentle-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.98); }
+  }
+  .animate-pulse-gentle {
+    animation: gentle-pulse 4s ease-in-out infinite;
   }
 }

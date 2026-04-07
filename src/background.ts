@@ -246,11 +246,21 @@ class DiceManager {
     }
   }
 
+  private lastDiceRolls: Map<string, { face: number; timestamp: number }> = new Map();
+
   async onDieRoll(dieId: string, faceValue: number, dieType: string): Promise<void> {
     const timestamp = Date.now();
     console.log(`[Pixels Roll20] Die rolled: ${dieType} with face ${faceValue} at ${timestamp}`);
     
-    // 0. Update local status
+    // 0. Duplicate Protection (Ignore identical results from same die within 1s)
+    const lastRoll = this.lastDiceRolls.get(dieId);
+    if (lastRoll && (timestamp - lastRoll.timestamp < 1000) && lastRoll.face === faceValue) {
+      console.log(`[Pixels Roll20] 🛡️ Ignoring duplicate roll event from ${dieId} (Face: ${faceValue})`);
+      return;
+    }
+    this.lastDiceRolls.set(dieId, { face: faceValue, timestamp });
+
+    // 1. Update local status
     const die = diceMapCache.get(dieId);
     if (die) {
       die.lastResult = faceValue;
@@ -262,10 +272,10 @@ class DiceManager {
           die.lastResult = null;
           this.persistAndNotify();
         }
-      }, 2000);
+      }, 6000);
     }
 
-    // 1. Get the current configuration from storage
+    // 2. Get the current configuration from storage
     chrome.storage.local.get(['lastSelectedMessageType', 'customRollTemplate', 'customMessageTypes', 'modifierConfig', 'hubSettings'], async (result) => {
       const config = result.modifierConfig || { advantageMode: 'normal', modifierSource: 'none' };
       const settings = result.hubSettings || { digitalAdvantage: false };
@@ -320,8 +330,8 @@ class DiceManager {
         // --- Handle Advantage / Disadvantage ---
         const mode = config.advantageMode || 'normal';
         
-        // 1500ms Simultaneous detection
-        if (mode !== 'normal' && pendingRoll && (timestamp - pendingRoll.timestamp < 1500) && (pendingRoll.dieType === dieType)) {
+        // 1500ms Simultaneous detection (Must be TWO DIFFERENT dice of the same type)
+        if (mode !== 'normal' && pendingRoll && (timestamp - pendingRoll.timestamp < 1500) && (pendingRoll.dieType === dieType) && (pendingRoll.dieId !== dieId)) {
           console.log('[Pixels Roll20] Simultaneous roll detected, merging.');
           if (pendingRollTimeout) clearTimeout(pendingRollTimeout);
           const r1 = pendingRoll.face;
@@ -349,6 +359,7 @@ class DiceManager {
               this.sendInterimMessage(die ? die.name : 'Pixel Die', faceValue);
               
               // Reset after 30s
+              if (pendingRollTimeout) clearTimeout(pendingRollTimeout);
               pendingRollTimeout = setTimeout(() => {
                 if (pendingRoll) {
                   console.log('[Pixels Roll20] Advantage timeout, sending single roll.');
@@ -358,7 +369,7 @@ class DiceManager {
                 }
               }, 30000);
             } else {
-              // Already have one roll pending (but didn't hit simultaneous window)
+              // Already have one roll pending (but didn't hit simultaneous window or same die)
               if (pendingRollTimeout) clearTimeout(pendingRollTimeout);
               const r1 = pendingRoll.face;
               const r2 = faceValue;
@@ -578,14 +589,18 @@ function autoConnectDice() {
 
 // Helper to attempt opening the popup action
 function tryOpenPopup(tab: chrome.tabs.Tab) {
-  if (tab.url && tab.url.includes('app.roll20.net')) {
+  if (tab.url && tab.url.includes('app.roll20.net/editor')) {
     chrome.storage.local.get(['hubSettings'], (result) => {
-      const settings = result.hubSettings || { autoOpenPopup: true };
+      const settings = result.hubSettings || { autoOpenPopup: true, autoOpenHub: true };
       if (!settings.autoOpenPopup) return;
 
       console.log('[Pixels Roll20] Attempting to auto-open popup for Roll20');
       try {
         chrome.action.openPopup();
+        // If enabled, ensure the Hub tab is also open (discretely in the background)
+        if (settings.autoOpenHub !== false) {
+          ensureHubTab();
+        }
       } catch (error) {
         // This often fails in MV3 without user gesture, but we try anyway
         console.log('[Pixels Roll20] Could not auto-open popup:', error);
@@ -596,7 +611,7 @@ function tryOpenPopup(tab: chrome.tabs.Tab) {
 
 // Auto-open when tab is updated (refreshed or loaded)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url?.includes('app.roll20.net')) {
+  if (changeInfo.status === 'complete' && tab.url?.includes('app.roll20.net/editor')) {
     tryOpenPopup(tab);
   }
 });

@@ -165,6 +165,12 @@ export const DieIcon: React.FC<{
   };
 
   const showResult = result !== null && result !== undefined && !isRolling;
+  
+  const typeStr = normalizedType.replace('d', '');
+  const dSize = parseInt(typeStr) || 20;
+  const maxVal = typeStr === '00' ? 90 : dSize;
+  const isCrit = result === maxVal;
+  const isFail = result === 1;
 
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
@@ -177,14 +183,17 @@ export const DieIcon: React.FC<{
         strokeWidth="1.5" 
         strokeLinecap="round" 
         strokeLinejoin="round" 
-        className={isRolling ? 'die-spinning' : 'die-settle'}
+        className={`${isRolling ? 'animate-rolling-all' : 'die-settle'} transition-colors duration-500`}
       >
         {getShape()}
       </svg>
       {showResult && (
         <div 
-          className="absolute inset-0 flex items-center justify-center font-black result-text text-text-main pointer-events-none"
-          style={{ fontSize: size * 0.4 }}
+          className={`absolute inset-0 flex items-center justify-center font-black result-text pointer-events-none ${isCrit ? 'animate-crit-all' : 'animate-result-fade'}`}
+          style={{ 
+            fontSize: size * 0.4,
+            color: isCrit ? undefined : isFail ? '#ec1b37' : 'white'
+          }}
         >
           {result === -1 ? '-' : result === 1 && normalizedType === 'fudge' ? '+' : result === 0 && normalizedType === 'fudge' ? ' ' : result}
         </div>
@@ -222,6 +231,12 @@ export const DieRow: React.FC<{
         .join(' ') 
     : '';
 
+  const typeStr = (die.dieType || 'd20').toLowerCase().replace('pipped', '').replace('d', '');
+  const dSize = parseInt(typeStr) || 20;
+  const maxVal = typeStr === '00' ? 90 : dSize;
+  const isCrit = die.lastResult === maxVal;
+  const isFail = die.lastResult === 1;
+
   return (
     <div className={`relative bg-card-bg p-4 rounded-xl flex justify-between items-center border border-border-main hover:border-accent transition-all group ${className}`}>
       <div className="flex items-center gap-4">
@@ -235,8 +250,8 @@ export const DieRow: React.FC<{
           <div className="text-xs mt-2">
             <span className={`uppercase font-black px-1.5 py-0.5 rounded ${
               die.status === 'disconnected' ? 'bg-danger/10 text-danger' : 
-              die.isRolling ? 'bg-accent/10 text-accent animate-pulse' : 
-              die.lastResult ? 'bg-success/10 text-success' : 
+              die.isRolling ? 'bg-white/10 animate-rainbow' : 
+              die.lastResult ? (isCrit ? 'bg-white/10 animate-rainbow animate-result-fade' : isFail ? 'bg-red-500/20 text-[#ec1b37] animate-result-fade' : 'bg-white/10 text-white animate-result-fade') : 
               die.status === 'crooked' ? 'bg-warning/10 text-warning' : 'bg-text-muted/10 text-text-muted opacity-60'
             }`}>
               {die.status === 'disconnected' ? 'Disconnected' : 

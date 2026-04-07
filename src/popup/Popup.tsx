@@ -37,23 +37,34 @@ const SKILLS = [
 
 const DieLabel: React.FC<{ die: DieStatus }> = ({ die }) => {
   const typeStr = die.dieType.toLowerCase().replace('pipped', '').replace('d', '');
-  const maxVal = typeStr === '00' ? 90 : (parseInt(typeStr) || 20);
-  const isCrit = !die.isRolling && die.lastResult === maxVal;
-  const isFail = !die.isRolling && die.lastResult === 1;
+  const dSize = parseInt(typeStr) || 20;
+  const maxVal = typeStr === '00' ? 90 : dSize;
+  const isCrit = die.lastResult === maxVal;
+  const isFail = die.lastResult === 1;
   const isLowBattery = die.battery <= 20;
 
   let colorClass = 'text-text-muted opacity-40';
   let glowStyle = {};
+  let content = die.dieType.toLowerCase().replace('pipped', '');
 
   if (die.isRolling) {
-    colorClass = 'text-accent animate-pulse';
-    glowStyle = { textShadow: '0 0 8px rgba(59, 130, 246, 0.5)' };
-  } else if (isCrit) {
-    colorClass = 'text-success font-black';
-    glowStyle = { textShadow: '0 0 8px rgba(16, 185, 129, 0.6)' };
-  } else if (isFail) {
-    colorClass = 'text-danger font-black';
-    glowStyle = { textShadow: '0 0 8px rgba(239, 68, 68, 0.6)' };
+    colorClass = 'animate-rainbow';
+    glowStyle = { textShadow: '0 0 12px rgba(188, 27, 132, 0.4)' };
+  } else if (die.lastResult !== null && die.lastResult !== undefined) {
+    content = die.lastResult.toString();
+    colorClass = 'text-white animate-result-fade';
+    glowStyle = { textShadow: '0 0 8px rgba(255, 255, 255, 0.4)' };
+
+    if (isCrit) {
+      colorClass = 'animate-crit-all';
+      glowStyle = { textShadow: '0 0 12px rgba(253, 190, 15, 0.6)' };
+    } else if (isFail) {
+      colorClass = 'animate-result-fade';
+      glowStyle = { 
+        color: '#ec1b37',
+        textShadow: '0 0 10px rgba(236, 27, 55, 0.6)' 
+      };
+    }
   } else if (isLowBattery) {
     colorClass = 'text-warning animate-pulse';
     glowStyle = { textShadow: '0 0 8px rgba(245, 158, 11, 0.4)' };
@@ -61,11 +72,11 @@ const DieLabel: React.FC<{ die: DieStatus }> = ({ die }) => {
 
   return (
     <span 
-      className={`font-black uppercase tracking-tighter text-sm transition-all duration-300 ${colorClass}`}
+      className={`font-black overflow-visible uppercase tracking-tighter text-sm transition-all duration-300 inline-block ${colorClass}`}
       style={glowStyle}
       title={isLowBattery ? "Low battery" : `${die.name} (${die.battery}%)`}
     >
-      {die.dieType.toLowerCase().replace('pipped', '')}
+      {content}
     </span>
   );
 };
@@ -245,12 +256,20 @@ const Popup: React.FC = () => {
 
   const handleOpenHub = async (tab: string = 'dice', params: string = '') => {
     try {
-      const url = chrome.runtime.getURL(`hub.html?tab=${tab}${params ? '&' + params : ''}`);
       const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('hub.html*') });
 
       if (tabs.length > 0 && tabs[0].id !== undefined) {
-        await chrome.tabs.update(tabs[0].id, { url, active: true });
+        // Focus existing tab
+        await chrome.tabs.update(tabs[0].id, { active: true });
+        // Request internal tab switch
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'switchTab',
+          tab,
+          action: params.includes('action=pair') ? 'pair' : undefined
+        });
       } else {
+        // Create new tab
+        const url = chrome.runtime.getURL(`hub.html?tab=${tab}${params ? '&' + params : ''}`);
         const roll20Tabs = await chrome.tabs.query({ url: '*://app.roll20.net/*' });
         const activeRoll20 = roll20Tabs.find(t => t.active) || roll20Tabs[0];
 
@@ -290,7 +309,7 @@ const Popup: React.FC = () => {
         <h2 className="text-2xl font-black tracking-tight text-accent italic flex-1">Pixels Dice for Roll20</h2>
 
         <Button
-          onClick={() => handleOpenHub('templates')}
+          onClick={() => handleOpenHub('settings')}
           variant="secondary"
           className="!p-0 w-10 h-10 rounded-xl"
           title="Open Pixels Hub"
@@ -300,9 +319,9 @@ const Popup: React.FC = () => {
       </div>
 
       <div className="bg-white/2 border border-white/5 rounded-2xl p-3 flex items-center justify-between shadow-none mb-6">
-        <div className="flex items-center gap-3 overflow-hidden">
+        <div className="flex items-center gap-3 overflow-visible">
           <span className="text-[0.8rem] font-black uppercase tracking-[0.2em] text-text-muted opacity-80 whitespace-nowrap">Connected:</span>
-          <div className="flex gap-4 overflow-x-auto no-scrollbar py-1">
+          <div className="flex gap-4 overflow-visible no-scrollbar py-1">
             {diceList.filter(d => d.status !== 'disconnected').length === 0 ? (
               <span className="text-[0.8rem] font-black uppercase tracking-widest text-text-muted opacity-40">No dice connected.</span>
             ) : (

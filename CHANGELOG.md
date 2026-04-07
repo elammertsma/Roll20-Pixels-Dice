@@ -3,23 +3,33 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.3.0] - 2026-04-07
+## Pixels Dice for Roll20 [3.3.0] - 2026-04-07
+
+Mostly visual touch-ups, UX refinements and bug-fixes.
 
 ### Added
 - **Auto-opening Popup**: The extension popup now automatically opens when you refresh a Roll20 editor page or switch back to an existing Roll20 tab.
-- **Roll Failure Detection**: If the extension cannot find the Roll20 chat input (e.g., if the page is still loading), a friendly error modal now appears in the popup.
+- **Auto-open Hub with Popup**: New setting to automatically open the Pixels Hub when entering a game, ensuring background dice reconnection.
+- **Gentle Pulse Animation**: Added subtle visual feedback to the "Keep this tab open" sidebar warning in the Hub.
+- **Roll Failure Detection**: If the extension cannot find the Roll20 chat input, a friendly error modal now appears in the popup.
 - **Bluetooth Connection Guidance**: Added a dedicated modal in the Hub to handle Bluetooth "out of range" errors with specific retry instructions.
 
 ### Changed
+- **Popup Auto-Open Restriction**: The extension popup now only auto-displays on `app.roll20.net/editor` to avoid cluttering unrelated pages.
+- **Console Silence**: Implemented user-gesture tracking in the Hub to prevent benign browser warnings about blocked confirmation panels.
 - **Popup Dice Summary**: Disconnected dice are now filtered out of the summary list in the popup for a cleaner interface.
 - **Deselect Modifiers**: You can now click an already selected Stat, Save, or Skill in the popup to deselect it.
 
 ### Fixed
-- Fixed an issue where the D20 remained in the popup summary even when the physical die was turned off or disconnected.
+- **Advantage/Disadvantage Logic**: Fixed a regression where a single die's duplicate events were being treated as two separate rolls. This could happen when the die was still settling and reported die results rapidly in succession.
+- **Simultaneous Detection**: Refined simultaneous roll detection to strictly require two physical dice with different Bluetooth IDs.
+- **Roll Debounce**: Added a 1-second debounce for identical face values on the same die to improve physical rolling reliability.
+- **Dice Persistence**: Fixed an issue where a die would remain in the popup summary even when the physical die was turned off or disconnected.
+- **Hub Navigation Improvement**: Moving between tabs in the Hub from the popup no longer triggers a page reload or the "Are you sure you want to leave?" prompt.
 
 ---
 
-## [3.2.3] - 2026-04-06
+## Pixels Dice for Roll20 [3.2.3] - 2026-04-06
 
 Major update shifting to React, overhauling the UI, and introducing the Pixels Hub.
 
