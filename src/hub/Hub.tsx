@@ -38,13 +38,16 @@ const Hub: React.FC = () => {
   // Warning before closing the tab
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = 'Closing the Hub will disconnect your Pixels dice from Roll20. Are you sure?';
-      return e.returnValue;
+      // Only warn if dice are actually connected!
+      if (connectedCount > 0) {
+        e.preventDefault();
+        e.returnValue = ''; // Browsers show a generic message anyway
+        return e.returnValue;
+      }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
+  }, [connectedCount]);
 
   const TabButton: React.FC<{ 
     id: typeof activeTab, 

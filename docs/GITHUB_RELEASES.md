@@ -69,9 +69,10 @@ dist/
 
 Before each release:
 - [ ] All code changes committed
+- [ ] Switch to production mode in webpack.config.js
+- [ ] Version updated in `manifest.json`
 - [ ] `npm run build` completes successfully
 - [ ] Tested in Chrome with `Load unpacked`
-- [ ] Version updated in `manifest.json`
 - [ ] ZIP file created from `dist/` folder
 - [ ] GitHub Release created with changelog
 - [ ] Release notes mention any breaking changes
