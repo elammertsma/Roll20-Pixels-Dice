@@ -5,7 +5,7 @@ Connect your physical [Pixels Dice](https://gamewithpixels.com/) to [Roll20.net]
 ## Installation
 
 ### Option 1: Pre-Built (Recommended for Users)
-Download the latest release from [GitHub Releases](https://github.com/yourusername/PixelsRoll20ChromeExtension/releases), extract the ZIP file, and load unpacked into Chrome.
+Download the latest release from [GitHub Releases](https://github.com/elammertsma/Roll20-Pixels-Dice/releases), extract the ZIP file, and load unpacked into Chrome.
 
 **See:** [GitHub Releases Guide](docs/GITHUB_RELEASES.md) for detailed instructions
 
